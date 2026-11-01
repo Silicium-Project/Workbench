@@ -168,6 +168,24 @@ intactes.
 révocation généré à la création si la clé est abandonnée, et décider si elle
 est fournie à l'environnement `signing-development` par secret GitHub.
 
+### D13. Flux de mise à jour des clients pendant la transition
+
+Décision du 31 octobre 2026 : les timers `silicium-update-manifest.timer` et
+`silicium-update-manifest-dev.timer` restent actifs pendant la transition. Ils
+recréent toutes les 30 secondes `update-manifest.json` et les installeurs dans
+`downloads`, que les clients desktop lisent pour se mettre à jour.
+
+- `apply.py --keep-update-feed` déploie les images sans remplacer le dossier
+  `downloads` et sans refuser à cause des timers.
+- Sans ce flag, le déploiement refuse tant qu'un timer est actif.
+- La migration du flux vers les snapshots signés par GitHub se fera plus tard,
+  avec le même format et la même clé de mise à jour, puis une bascule vérifiée.
+- Le service `silicium-update-manifest.service` exécute
+  `/opt/silicium/deploy/linux/publish-update-manifest.sh` en root. Le dossier
+  `/opt/silicium` appartient à `luis` : ce script est modifiable par un compte non
+  privilégié. À corriger avant toute bascule (propriété root du script et de son
+  dossier).
+
 ## Revue
 
 Réviser ces décisions à chaque fin d'essai Enterprise, à chaque ajout de
