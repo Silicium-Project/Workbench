@@ -156,13 +156,17 @@ def apply_verified(folder,channel,keep_update_feed=False):
         if target.exists():raise RuntimeError('Staged candidate already exists; inspect the previous attempt before retrying')
         target.mkdir(parents=True)
         extract(folder/'deployment.tar.gz',target)
-        extract(folder/'packages.tar.gz',target)
-        snapshots=data/'package-snapshots';snapshots.mkdir(mode=0o755,exist_ok=True)
-        public_snapshot=snapshots/m['release_id']
-        if public_snapshot.exists():raise RuntimeError('Immutable package snapshot already exists')
-        shutil.copytree(target/'downloads',public_snapshot)
-        for path in public_snapshot.rglob('*'):os.chmod(path,0o755 if path.is_dir() else 0o644)
-        os.chmod(public_snapshot,0o755)
+        if m.get('packages','included')=='included':
+            extract(folder/'packages.tar.gz',target)
+            snapshots=data/'package-snapshots';snapshots.mkdir(mode=0o755,exist_ok=True)
+            public_snapshot=snapshots/m['release_id']
+            if public_snapshot.exists():raise RuntimeError('Immutable package snapshot already exists')
+            shutil.copytree(target/'downloads',public_snapshot)
+            for path in public_snapshot.rglob('*'):os.chmod(path,0o755 if path.is_dir() else 0o644)
+            os.chmod(public_snapshot,0o755)
+        else:
+            # Contract v1 dev candidate: the client packages stay on the previous immutable snapshot.
+            public_snapshot=Path(previous['downloads'])
         for name in ['manifest.json','manifest.json.asc']:shutil.copy2(folder/name,target/name)
         env=target/'candidate.env'
         env.write_text('\n'.join([f'SILICIUM_{c.upper()}_IMAGE={(m["components"][c]["image"] if c in m["components"] else previous["network_image"])}'for c in ['api','web','network']]+[
