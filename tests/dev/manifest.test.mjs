@@ -266,3 +266,23 @@ test('release baseline rejects channel tags that contradict GitHub prerelease me
     /prod release tag contradicts its prerelease metadata/,
   );
 });
+
+test('contract v1: a dev candidate may ship services only, and then must omit the packages asset', () => {
+  const m = candidate();
+  m.packages = 'not_included';
+  delete m.components.node;
+  m.assets = m.assets.filter((asset) => asset.name !== 'packages.tar.gz');
+  assert.deepEqual(validateManifest(m), []);
+  m.assets.push({ name: 'packages.tar.gz', sha256: 'c'.repeat(64), size: 12 });
+  assert.ok(validateManifest(m).includes('packages excluded but packages.tar.gz present'));
+});
+
+test('contract v1: production cannot exclude packages and the mode must be explicit', () => {
+  const prod = candidate();
+  prod.channel = 'prod';
+  prod.packages = 'not_included';
+  assert.ok(validateManifest(prod).includes('packages may be excluded only from the dev channel'));
+  const unknown = candidate();
+  unknown.packages = 'maybe';
+  assert.ok(validateManifest(unknown).includes('invalid packages mode'));
+});

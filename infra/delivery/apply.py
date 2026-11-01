@@ -17,6 +17,15 @@ def execute(args,**kwargs):
     if p.returncode:raise RuntimeError(f'Operation failed: {args[0]} (exit {p.returncode}); inspect private host diagnostics')
     return p.stdout
 
+def required_assets(m):
+    # Contract v1: only the dev channel may ship services without client packages.
+    mode=m.get('packages','included')
+    if mode not in ('included','not_included'):raise ValueError('Invalid packages mode')
+    if mode=='not_included':
+        if m.get('channel')!='dev':raise ValueError('Packages may be excluded only from the dev channel')
+        return {'deployment.tar.gz','qualification.json'}
+    return {'packages.tar.gz','deployment.tar.gz','qualification.json'}
+
 def verify_manifest(folder,channel,keyring):
     execute(['gpgv','--keyring',str(keyring),str(folder/'manifest.json.asc'),str(folder/'manifest.json')])
     raw=(folder/'manifest.json').read_bytes();m=json.loads(raw)
@@ -33,7 +42,8 @@ def verify_manifest(folder,channel,keyring):
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*',a['name']) or a['name'] in names:raise ValueError('Invalid/duplicate asset name')
         names.add(a['name']);p=folder/a['name']
         if p.is_symlink() or p.stat().st_size!=a['size'] or digest(p)!=a['sha256']:raise ValueError('Artifact integrity failure')
-    if not {'packages.tar.gz','deployment.tar.gz','qualification.json'}<=names:raise ValueError('Incomplete delivery')
+    if m.get('packages','included')=='not_included' and 'packages.tar.gz' in names:raise ValueError('Packages excluded but packages.tar.gz present')
+    if not required_assets(m)<=names:raise ValueError('Incomplete delivery')
     return m,hashlib.sha256(raw).hexdigest()
 
 def extract(archive,target):
