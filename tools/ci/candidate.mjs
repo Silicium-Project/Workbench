@@ -150,9 +150,10 @@ if (operation === 'prepare-private') {
       allowMissing: true,
     });
     // Images built from private component sources must never be public: a public image cannot be recalled.
-    if (!pkg || pkg.visibility !== 'private')
+    // A missing package is created by the first push from this private repository; an existing one must be private.
+    if (pkg && pkg.visibility !== 'private')
       throw new Failure(
-        'GHCR package must exist and be private before publication: images contain private source and must not be public (decision D15)',
+        'Existing GHCR package is not private: images contain private source and must not be public (decision D15)',
       );
     const tag = `ghcr.io/silicium-project/${component}:${identity.release_id}`;
     const existing = run(['docker', 'buildx', 'imagetools', 'inspect', tag], {
