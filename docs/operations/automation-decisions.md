@@ -154,11 +154,12 @@ clé de release n'existait dans le dépôt. Décision : une nouvelle clé ed2551
 signature, sans lien avec les clés APT, RPM et de mise à jour, qui restent
 intactes.
 
-- Empreinte : `CA5D93C2016B20A87CB2FA1A977A3975BD15FD41`, expiration 2028-10-29.
+- Empreinte : `DC2F74BC0637B05AF15C4836FDDA1380D2452C7C`, expiration 2030-10-31.
+- Remplace la clé `CA5D93C2016B20A87CB2FA1A977A3975BD15FD41`, créée le 30 octobre et remplacée avant toute signature : aucune release n'a été signée avec elle.
 - Seule la partie publique est versionnée, dans `contracts/trust/release.gpg`.
 - La clé privée est dans le trousseau GPG de la machine de l'équipe, protégée
   par une passphrase générée. La passphrase est dans le Gestionnaire
-  d'identification Windows, cible `silicium-release-gpg`. Ni l'une ni l'autre
+  d'identification Windows, cible `silicium-release-gpg-2`. Ni l'une ni l'autre
   ne sont dans le dépôt.
 - Aucune signature n'a encore été produite. Le déploiement reste fermé.
 
