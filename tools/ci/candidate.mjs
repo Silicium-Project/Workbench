@@ -243,6 +243,7 @@ if (operation === 'prepare-private') {
   };
   const m = requireManifest({
     ...identity,
+    packages: identity.channel === 'dev' ? 'not_included' : 'included',
     policy_digest: identity.qualification.policy_digest,
     created_at: new Date().toISOString(),
     compatibility: { data_schema: 1, rollback: 'application-only', program_upgrade: false },

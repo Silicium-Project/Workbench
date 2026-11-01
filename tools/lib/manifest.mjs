@@ -26,6 +26,11 @@ export function validateManifest(m) {
     errors.push('production cannot use a prerelease');
   if (m.channel === 'dev' && !version.includes('-dev.'))
     errors.push('development must use a prerelease');
+  // Contract v1: a dev candidate may ship services only, with an explicit packages field.
+  const packagesMode = m.packages ?? 'included';
+  if (!['included', 'not_included'].includes(packagesMode)) errors.push('invalid packages mode');
+  if (packagesMode === 'not_included' && m.channel !== 'dev')
+    errors.push('packages may be excluded only from the dev channel');
   if (m.release_id !== `${m.channel}-${version}-${sourceSha.slice(0, 12)}`)
     errors.push('candidate identity mismatch');
   const qualification = isRecord(m.qualification) ? m.qualification : null;
@@ -59,7 +64,9 @@ export function validateManifest(m) {
     errors.push('private Integration qualification missing or stale');
   if (!isRecord(m.components)) errors.push('components must be a JSON object');
   else {
-    for (const component of ['api', 'web', 'network', 'node'])
+    const requiredComponents =
+      packagesMode === 'included' ? ['api', 'web', 'network', 'node'] : ['api', 'web', 'network'];
+    for (const component of requiredComponents)
       if (!m.components[component]) errors.push(`missing component ${component}`);
     for (const [name, c] of Object.entries(m.components)) {
       if (!['web', 'api', 'network', 'node', 'solana', 'sdk'].includes(name))
@@ -101,10 +108,13 @@ export function validateManifest(m) {
         errors.push('invalid asset identity');
     }
   }
-  if (
-    !['packages.tar.gz', 'deployment.tar.gz', 'qualification.json'].every((name) => names.has(name))
-  )
-    errors.push('incomplete candidate assets');
+  const requiredAssets =
+    packagesMode === 'included'
+      ? ['packages.tar.gz', 'deployment.tar.gz', 'qualification.json']
+      : ['deployment.tar.gz', 'qualification.json'];
+  if (packagesMode === 'not_included' && names.has('packages.tar.gz'))
+    errors.push('packages excluded but packages.tar.gz present');
+  if (!requiredAssets.every((name) => names.has(name))) errors.push('incomplete candidate assets');
   return errors;
 }
 export function requireManifest(m) {
