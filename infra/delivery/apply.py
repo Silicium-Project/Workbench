@@ -113,6 +113,23 @@ def compose_env(config,data):
     # A dev run must never read the prod configuration or mount the prod data (postgres included).
     return {**os.environ,'SILICIUM_CONFIG_DIR':str(config),'SILICIUM_DATA_ROOT':str(data)}
 
+def compose_candidate(project,config,data,candidate,*args):
+    return execute(['docker','compose','--project-name',project,'--env-file',str(config/'compose.env'),'--env-file',str(candidate/'candidate.env'),'-f',str(candidate/'infra/compose/docker-compose.yml'),*args],env=compose_env(config,data))
+
+def rollback(channel,keep_update_feed=False):
+    # Restore the services of the previous release recorded in current.json (manual, root only).
+    if not keep_update_feed:raise RuntimeError('Rollback requires --keep-update-feed during the transition')
+    data,config,project,_api_port,_web_port=CHANNELS[channel];data=Path(data);config=Path(config)
+    state=data/'delivery'
+    with (state/'lock').open('w') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        current=json.loads((state/'current.json').read_text())
+        previous=current.get('previous')
+        if not previous:raise RuntimeError('No previous release to roll back to')
+        compose_candidate(project,config,data,Path(previous['directory']),'up','-d','--no-build','--no-deps','backend','frontend')
+        atomic_json(state/'current.json',previous)
+        return {'status':'rolled-back','release_id':previous['release_id'],'rolled_back_from':current['release_id']}
+
 def feed_guard(timer_active,keep_update_feed):
     # Desktop clients read the update feed written by the host timers. Retiring them needs a migration.
     if timer_active and not keep_update_feed:raise RuntimeError('Retire the legacy host manifest-publisher timer during adoption before deploying GitHub-signed snapshots, or deploy with --keep-update-feed during the transition')
@@ -151,7 +168,7 @@ def apply_verified(folder,channel,keep_update_feed=False):
         env.write_text('\n'.join([f'SILICIUM_{c.upper()}_IMAGE={(m["components"][c]["image"] if c in m["components"] else previous["network_image"])}'for c in ['api','web','network']]+[
             f'SILICIUM_RELEASE_CHANNEL={channel}',f'SILICIUM_RELEASE_ID={m["release_id"]}',f'SILICIUM_MANIFEST_DIGEST={md}',f'SILICIUM_RELEASE_VERSION={m["version"]}',f'SILICIUM_RELEASE_BUILD={m["source_sha"]}'])+'\n');os.chmod(env,0o600)
         def compose(candidate,*args):
-            return execute(['docker','compose','--project-name',project,'--env-file',str(config/'compose.env'),'--env-file',str(candidate/'candidate.env'),'-f',str(candidate/'infra/compose/docker-compose.yml'),*args],env=compose_env(config,data))
+            return compose_candidate(project,config,data,candidate,*args)
         compose(target,'config','--quiet');compose(target,'pull','backend','frontend')
         network_image=m['components']['network']['image'] if 'network' in m['components'] else previous['network_image']
         network_changed=previous.get('network_image')!=network_image
@@ -183,6 +200,9 @@ def apply(folder,channel,keep_update_feed=False):
         return apply_verified(private,channel,keep_update_feed)
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--candidate',type=Path,required=True);p.add_argument('--channel',choices=CHANNELS,required=True);p.add_argument('--keep-update-feed',action='store_true');args=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--candidate',type=Path);p.add_argument('--rollback',action='store_true');p.add_argument('--channel',choices=CHANNELS,required=True);p.add_argument('--keep-update-feed',action='store_true');args=p.parse_args()
     if os.geteuid()!=0:p.error('Use the restricted deployment account/sudo command')
-    print(json.dumps(apply(args.candidate.resolve(),args.channel,args.keep_update_feed)))
+    if args.rollback:print(json.dumps(rollback(args.channel,args.keep_update_feed)))
+    else:
+        if not args.candidate:p.error('--candidate is required unless --rollback is given')
+        print(json.dumps(apply(args.candidate.resolve(),args.channel,args.keep_update_feed)))
