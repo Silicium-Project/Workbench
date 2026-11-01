@@ -26,6 +26,13 @@ def required_assets(m):
         return {'deployment.tar.gz','qualification.json'}
     return {'packages.tar.gz','deployment.tar.gz','qualification.json'}
 
+def required_components(m):
+    # Contract v1b: the network service may keep its running image, only on the dev channel.
+    mode=m.get('network','included')
+    if mode not in ('included','unchanged'):raise ValueError('Invalid network mode')
+    if mode=='unchanged' and m.get('channel')!='dev':raise ValueError('Network may stay unchanged only in the dev channel')
+    return {'api','web','network'} if mode=='included' else {'api','web'}
+
 def verify_manifest(folder,channel,keyring):
     execute(['gpgv','--keyring',str(keyring),str(folder/'manifest.json.asc'),str(folder/'manifest.json')])
     raw=(folder/'manifest.json').read_bytes();m=json.loads(raw)
@@ -34,7 +41,8 @@ def verify_manifest(folder,channel,keyring):
     if not re.fullmatch(r'\d+\.\d+\.\d+(?:-dev\.\d+)?',m.get('version','')):raise ValueError('Invalid version')
     if m.get('release_id')!=f'{channel}-{m["version"]}-{m["source_sha"][:12]}':raise ValueError('Invalid candidate identity')
     if (channel=='dev')!=('-dev.' in m['version']):raise ValueError('Version/channel mismatch')
-    for name in ['api','web','network']:
+    if m.get('network','included')=='unchanged' and 'network' in m.get('components',{}):raise ValueError('Network component present but unchanged')
+    for name in sorted(required_components(m)):
         c=m.get('components',{}).get(name,{})
         if not re.fullmatch(r'ghcr\.io/silicium-project/[a-z0-9._/-]+@sha256:[a-f0-9]{64}',c.get('image','')):raise ValueError('Missing immutable image')
     names=set()
@@ -135,12 +143,13 @@ def apply_verified(folder,channel,keep_update_feed=False):
         os.chmod(public_snapshot,0o755)
         for name in ['manifest.json','manifest.json.asc']:shutil.copy2(folder/name,target/name)
         env=target/'candidate.env'
-        env.write_text('\n'.join([f'SILICIUM_{c.upper()}_IMAGE={m["components"][c]["image"]}'for c in ['api','web','network']]+[
+        env.write_text('\n'.join([f'SILICIUM_{c.upper()}_IMAGE={(m["components"][c]["image"] if c in m["components"] else previous["network_image"])}'for c in ['api','web','network']]+[
             f'SILICIUM_RELEASE_CHANNEL={channel}',f'SILICIUM_RELEASE_ID={m["release_id"]}',f'SILICIUM_MANIFEST_DIGEST={md}',f'SILICIUM_RELEASE_VERSION={m["version"]}',f'SILICIUM_RELEASE_BUILD={m["source_sha"]}'])+'\n');os.chmod(env,0o600)
         def compose(candidate,*args):
             return execute(['docker','compose','--project-name',project,'--env-file',str(config/'compose.env'),'--env-file',str(candidate/'candidate.env'),'-f',str(candidate/'infra/compose/docker-compose.yml'),*args])
         compose(target,'config','--quiet');compose(target,'pull','backend','frontend','reputation_bridge')
-        network_changed=previous.get('network_image')!=m['components']['network']['image']
+        network_image=m['components']['network']['image'] if 'network' in m['components'] else previous['network_image']
+        network_changed=previous.get('network_image')!=network_image
         # A new runtime requires an atomic drain protocol. Missing telemetry never means idle.
         if network_changed:
             raise RuntimeError('Runtime update requires the qualified drain/rolling-update procedure; automatic forced restarts are prohibited')
@@ -154,7 +163,7 @@ def apply_verified(folder,channel,keep_update_feed=False):
                     time.sleep(5)
             if mode=='switch':switch_link(data/'downloads',public_snapshot)
             activated=True
-            value={'release_id':m['release_id'],'manifest_digest':md,'directory':str(target),'downloads':str(public_snapshot),'network_image':m['components']['network']['image'],'previous':previous}
+            value={'release_id':m['release_id'],'manifest_digest':md,'directory':str(target),'downloads':str(public_snapshot),'network_image':network_image,'previous':previous}
             atomic_json(state/'current.json',value)
             return {k:v for k,v in value.items() if k!='previous'}
         except Exception:

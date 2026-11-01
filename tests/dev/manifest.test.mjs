@@ -286,3 +286,18 @@ test('contract v1: production cannot exclude packages and the mode must be expli
   unknown.packages = 'maybe';
   assert.ok(validateManifest(unknown).includes('invalid packages mode'));
 });
+
+test('contract v1b: a dev candidate may keep network on its running image', () => {
+  const m = candidate();
+  m.packages = 'not_included';
+  m.network = 'unchanged';
+  delete m.components.node;
+  delete m.components.network;
+  m.assets = m.assets.filter((asset) => asset.name !== 'packages.tar.gz');
+  assert.deepEqual(validateManifest(m), []);
+  m.components.network = {
+    source_sha: 'a'.repeat(40),
+    image: `ghcr.io/silicium-project/network@sha256:${'b'.repeat(64)}`,
+  };
+  assert.ok(validateManifest(m).includes('network component present but network is unchanged'));
+});
