@@ -98,7 +98,8 @@ if (operation === 'prepare-private') {
     throw new Failure(
       'Candidate already published; promote the existing identity rather than replacing assets',
     );
-  const changed = ['api', 'web', 'network', 'node'];
+  // Contract v1: dev candidates change api and web only; network and client packages stay unchanged.
+  const changed = channel === 'dev' ? ['api', 'web'] : ['api', 'web', 'network', 'node'];
   const artifactNames = Object.fromEntries(
     verified.artifacts.map((artifact) => [artifact.suite, artifact.name]),
   );
