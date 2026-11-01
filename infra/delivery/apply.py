@@ -152,7 +152,7 @@ def apply_verified(folder,channel,keep_update_feed=False):
             f'SILICIUM_RELEASE_CHANNEL={channel}',f'SILICIUM_RELEASE_ID={m["release_id"]}',f'SILICIUM_MANIFEST_DIGEST={md}',f'SILICIUM_RELEASE_VERSION={m["version"]}',f'SILICIUM_RELEASE_BUILD={m["source_sha"]}'])+'\n');os.chmod(env,0o600)
         def compose(candidate,*args):
             return execute(['docker','compose','--project-name',project,'--env-file',str(config/'compose.env'),'--env-file',str(candidate/'candidate.env'),'-f',str(candidate/'infra/compose/docker-compose.yml'),*args],env=compose_env(config,data))
-        compose(target,'config','--quiet');compose(target,'pull','backend','frontend','reputation_bridge')
+        compose(target,'config','--quiet');compose(target,'pull','backend','frontend')
         network_image=m['components']['network']['image'] if 'network' in m['components'] else previous['network_image']
         network_changed=previous.get('network_image')!=network_image
         # A new runtime requires an atomic drain protocol. Missing telemetry never means idle.
