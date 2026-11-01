@@ -14,6 +14,24 @@ import { writePreviousInstallBaseline } from '../lib/candidate-installation.mjs'
 const operation = process.argv[2];
 const dir = resolve(root, '.artifacts/candidate');
 mkdirSync(dir, { recursive: true });
+
+// The org container-package endpoint needs an authenticated token: the public API answers 401.
+// A missing package is the first-push case; any other failure stops the publication.
+function ownedContainerPackage(name) {
+  const response = run(
+    [
+      'gh',
+      'api',
+      '--header',
+      'X-GitHub-Api-Version: 2026-03-10',
+      `orgs/Silicium-Project/packages/container/${name}`,
+    ],
+    { allowFailure: true },
+  );
+  if (response.status === 0) return JSON.parse(response.stdout);
+  if (/HTTP 404/.test(response.stderr)) return null;
+  throw new Failure('GHCR package lookup failed');
+}
 if (operation === 'prepare-private') {
   if (
     process.env.GITHUB_ACTIONS !== 'true' ||
@@ -147,9 +165,7 @@ if (operation === 'prepare-private') {
   const inputs = readJson(resolve(dir, 'inputs.json'));
   const components = { ...(inputs.previous?.components ?? {}) };
   for (const component of ['api', 'web', 'network'].filter((c) => inputs.changed.includes(c))) {
-    const pkg = publicApi(`orgs/Silicium-Project/packages/container/${component}`, {
-      allowMissing: true,
-    });
+    const pkg = ownedContainerPackage(component);
     // Images built from private component sources must never be public: a public image cannot be recalled.
     // A missing package is created by the first push from this private repository; an existing one must be private.
     if (pkg && pkg.visibility !== 'private')
