@@ -15,8 +15,10 @@ export function deploymentSsh() {
   const dir = mkdtempSync(join(tmpdir(), 'silicium-ssh-'));
   const key = join(dir, 'key'),
     known = join(dir, 'known_hosts');
-  writeFileSync(key, process.env.DEPLOY_SSH_KEY, { mode: 0o600 });
-  writeFileSync(known, process.env.DEPLOY_SSH_KNOWN_HOSTS, { mode: 0o600 });
+  // Secret storage can drop the final newline; OpenSSH rejects a private key without it.
+  const withNewline = (value) => (value.endsWith('\n') ? value : `${value}\n`);
+  writeFileSync(key, withNewline(process.env.DEPLOY_SSH_KEY), { mode: 0o600 });
+  writeFileSync(known, withNewline(process.env.DEPLOY_SSH_KNOWN_HOSTS), { mode: 0o600 });
   return {
     destination: `silicium-deploy@${host}`,
     args: [
