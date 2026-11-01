@@ -26,3 +26,7 @@ def test_default_requires_network_component():
 
 def test_prod_cannot_keep_network_unchanged():
     with pytest.raises(ValueError):delivery.required_components({'channel':'prod','network':'unchanged'})
+
+def test_compose_reads_the_channel_config_directory():
+    assert delivery.compose_env(Path('/etc/silicium-dev'))['SILICIUM_CONFIG_DIR']=='/etc/silicium-dev'
+    assert delivery.compose_env(Path('/etc/silicium'))['SILICIUM_CONFIG_DIR']=='/etc/silicium'

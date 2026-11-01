@@ -108,6 +108,10 @@ def health(manifest,manifest_digest,ports):
 def vpn_has_address(payload,address='10.77.0.1'):
     return any(row.get('local')==address for iface in payload for row in iface.get('addr_info',[]))
 
+def compose_env(config):
+    # The compose files read env_file from SILICIUM_CONFIG_DIR; a dev run must never read the prod config.
+    return {**os.environ,'SILICIUM_CONFIG_DIR':str(config)}
+
 def feed_guard(timer_active,keep_update_feed):
     # Desktop clients read the update feed written by the host timers. Retiring them needs a migration.
     if timer_active and not keep_update_feed:raise RuntimeError('Retire the legacy host manifest-publisher timer during adoption before deploying GitHub-signed snapshots, or deploy with --keep-update-feed during the transition')
@@ -146,7 +150,7 @@ def apply_verified(folder,channel,keep_update_feed=False):
         env.write_text('\n'.join([f'SILICIUM_{c.upper()}_IMAGE={(m["components"][c]["image"] if c in m["components"] else previous["network_image"])}'for c in ['api','web','network']]+[
             f'SILICIUM_RELEASE_CHANNEL={channel}',f'SILICIUM_RELEASE_ID={m["release_id"]}',f'SILICIUM_MANIFEST_DIGEST={md}',f'SILICIUM_RELEASE_VERSION={m["version"]}',f'SILICIUM_RELEASE_BUILD={m["source_sha"]}'])+'\n');os.chmod(env,0o600)
         def compose(candidate,*args):
-            return execute(['docker','compose','--project-name',project,'--env-file',str(config/'compose.env'),'--env-file',str(candidate/'candidate.env'),'-f',str(candidate/'infra/compose/docker-compose.yml'),*args])
+            return execute(['docker','compose','--project-name',project,'--env-file',str(config/'compose.env'),'--env-file',str(candidate/'candidate.env'),'-f',str(candidate/'infra/compose/docker-compose.yml'),*args],env=compose_env(config))
         compose(target,'config','--quiet');compose(target,'pull','backend','frontend','reputation_bridge')
         network_image=m['components']['network']['image'] if 'network' in m['components'] else previous['network_image']
         network_changed=previous.get('network_image')!=network_image
