@@ -22,8 +22,7 @@ les états datés du 29 octobre ci-dessous.
 | 1 | Faite pour les docs et CODEOWNERS. Aucun runner auto-hébergé (organisation et sept dépôts). Reste : réglages de dépôt et de sécurité, humains. |
 | 2 | Faite. Les cinq `main` natifs sont restaurés et repinnés sur la politique `7808d0f8`. |
 | 3 | Faite : pins `f911ed89`, `components.lock.json` et gitlinks ensemble. |
-| 4 | En cours. Qualification du 1er novembre sur le SHA `121d6600` refusée au plan : deux `ci/required` sur le même SHA (push et relance manuelle). Relance sur un SHA neuf. |
-| 4 bis | Remplacé par la ligne précédente pour la vague 4. | Première qualification (`41069910230`) : 16 suites sur 17, `solana` bloquée puis annulée ; seconde tentative refusée au plan. Aucun reçu signé. |
+| 4 | En cours. Première qualification (`41069910230`) : 16 suites sur 17, `solana` bloquée puis annulée ; seconde tentative refusée au plan. Le 1er novembre, `121d6600` a aussi été refusé au plan : deux `ci/required` sur le même SHA (push et relance manuelle). Relance sur un SHA neuf. Aucun reçu signé. |
 | 5 et 6 | Non commencées : décisions et clés humaines. |
 
 Le détail des blocages de la vague 4 est dans `docs/operations/automation-decisions.md`.
