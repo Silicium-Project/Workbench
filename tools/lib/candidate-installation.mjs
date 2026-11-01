@@ -5,7 +5,8 @@ import { Failure, writeJson } from './process.mjs';
 /** Persist the signed prior release fields consumed by package upgrade tests. */
 export function writePreviousInstallBaseline(candidateDir, previous) {
   const output = resolve(candidateDir, 'previous.json');
-  if (previous == null) {
+  // A services-only previous release (contract v1 dev) ships no packages, so it has no upgrade baseline.
+  if (previous == null || previous.packages === 'not_included') {
     rmSync(output, { force: true });
     return null;
   }
