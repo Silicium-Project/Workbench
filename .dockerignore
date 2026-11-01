@@ -25,6 +25,8 @@
 **/.env.*
 **/.silicium/**
 **/node_modules/**
+!apps/web/.output/server/node_modules/
+!apps/web/.output/server/node_modules/**
 **/target/**
 **/*.key
 **/*wallet*.json
