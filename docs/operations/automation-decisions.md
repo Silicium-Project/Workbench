@@ -186,6 +186,20 @@ recréent toutes les 30 secondes `update-manifest.json` et les installeurs dans
   privilégié. À corriger avant toute bascule (propriété root du script et de son
   dossier).
 
+### D15. Visibilité des images GHCR
+
+Décision du 1er novembre 2026 : les images `api`, `web` et `network` sont publiées
+sur GHCR en **privé**. Une image construite à partir de sources privées ne doit
+jamais être publique : une publication publique ne se rappelle pas.
+
+- `candidate.mjs images` exige un package existant et privé, et échoue sinon.
+- Le VPS tire les images avec un jeton GitHub en lecture seule (`read:packages`),
+  stocké comme secret sur le VPS, jamais dans le dépôt.
+- Le quota de packages de l'organisation Enterprise couvre ce stockage ; la règle
+  « stockage privé interdit » ne vise que le budget Actions.
+- Une image publique n'est envisageable que pour des binaires sans source, après
+  revue humaine du contenu.
+
 ## Revue
 
 Réviser ces décisions à chaque fin d'essai Enterprise, à chaque ajout de
