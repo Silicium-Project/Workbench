@@ -60,6 +60,24 @@ test('candidate preparation retains the signed package snapshot for upgrade test
   }
 });
 
+test('services-only previous releases carry no package upgrade baseline', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'silicium-candidate-baseline-'));
+  try {
+    assert.equal(
+      writePreviousInstallBaseline(directory, {
+        release_id: 'dev-0.3.0-dev.13-0f564762c290',
+        packages: 'not_included',
+        components: { api: {}, web: {} },
+        assets: [],
+      }),
+      null,
+    );
+    assert.equal(existsSync(join(directory, 'previous.json')), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('first candidates remove stale package upgrade baselines and incomplete releases fail', () => {
   const directory = mkdtempSync(join(tmpdir(), 'silicium-candidate-baseline-'));
   try {
