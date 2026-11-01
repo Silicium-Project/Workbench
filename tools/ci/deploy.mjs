@@ -79,7 +79,7 @@ try {
         'ssh',
         ...ssh,
         dest,
-        `sudo -n /usr/local/sbin/silicium-apply --candidate ${remote} --channel ${channel}`,
+        `sudo -n /usr/local/sbin/silicium-apply --candidate ${remote} --channel ${channel} --keep-update-feed`,
       ],
       { timeout: 600_000 },
     );

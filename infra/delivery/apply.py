@@ -90,7 +90,12 @@ def health(manifest,manifest_digest,ports):
 def vpn_has_address(payload,address='10.77.0.1'):
     return any(row.get('local')==address for iface in payload for row in iface.get('addr_info',[]))
 
-def apply_verified(folder,channel):
+def feed_guard(timer_active,keep_update_feed):
+    # Desktop clients read the update feed written by the host timers. Retiring them needs a migration.
+    if timer_active and not keep_update_feed:raise RuntimeError('Retire the legacy host manifest-publisher timer during adoption before deploying GitHub-signed snapshots, or deploy with --keep-update-feed during the transition')
+    return 'keep' if keep_update_feed else 'switch'
+
+def apply_verified(folder,channel,keep_update_feed=False):
     data,config,project,api_port,web_port=CHANNELS[channel];data=Path(data);config=Path(config)
     state=data/'delivery';state.mkdir(mode=0o700,parents=True,exist_ok=True)
     with (state/'lock').open('w') as lock:
@@ -105,7 +110,7 @@ def apply_verified(folder,channel):
         # A host publisher would mutate the signed snapshot after activation.
         timer='silicium-update-manifest'+('-dev' if channel=='dev' else '')+'.timer'
         active=subprocess.run(['systemctl','is-active','--quiet',timer],capture_output=True).returncode==0
-        if active:raise RuntimeError('Retire the legacy host manifest-publisher timer during adoption before deploying GitHub-signed snapshots')
+        mode=feed_guard(active,keep_update_feed)
         if shutil.disk_usage(data).free < sum(a['size']for a in m['assets'])*3+1024**3:raise RuntimeError('Insufficient staging space')
         target=state/'candidates'/m['release_id']
         if target.exists():raise RuntimeError('Staged candidate already exists; inspect the previous attempt before retrying')
@@ -137,22 +142,23 @@ def apply_verified(folder,channel):
                 except Exception:
                     if attempt==11:raise
                     time.sleep(5)
-            switch_link(data/'downloads',public_snapshot);activated=True
+            if mode=='switch':switch_link(data/'downloads',public_snapshot)
+            activated=True
             value={'release_id':m['release_id'],'manifest_digest':md,'directory':str(target),'downloads':str(public_snapshot),'network_image':m['components']['network']['image'],'previous':previous}
             atomic_json(state/'current.json',value)
             return {k:v for k,v in value.items() if k!='previous'}
         except Exception:
             compose(old,'up','-d','--no-build','--no-deps','backend','frontend')
-            if activated:switch_link(data/'downloads',Path(previous['downloads']))
+            if activated and mode=='switch':switch_link(data/'downloads',Path(previous['downloads']))
             raise
 
-def apply(folder,channel):
+def apply(folder,channel,keep_update_feed=False):
     data,config,*_=CHANNELS[channel];state=Path(data)/'delivery';state.mkdir(mode=0o700,parents=True,exist_ok=True)
     if not folder.is_relative_to('/var/lib/silicium-delivery/incoming'):raise ValueError('Candidate must come from the restricted incoming directory')
     with immutable_input(folder,state,Path(config)/'release-trust.gpg') as private:
-        return apply_verified(private,channel)
+        return apply_verified(private,channel,keep_update_feed)
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--candidate',type=Path,required=True);p.add_argument('--channel',choices=CHANNELS,required=True);args=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--candidate',type=Path,required=True);p.add_argument('--channel',choices=CHANNELS,required=True);p.add_argument('--keep-update-feed',action='store_true');args=p.parse_args()
     if os.geteuid()!=0:p.error('Use the restricted deployment account/sudo command')
-    print(json.dumps(apply(args.candidate.resolve(),args.channel)))
+    print(json.dumps(apply(args.candidate.resolve(),args.channel,args.keep_update_feed)))
