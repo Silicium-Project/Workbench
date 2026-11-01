@@ -86,6 +86,7 @@ services:
     - host.docker.internal:${SILICIUM_HOST_GATEWAY:-host-gateway}
     volumes:
     - ${SILICIUM_DATA_ROOT:-/var/lib/silicium}:/var/lib/silicium
+    - ${SILICIUM_RUNTIME_ROOT:-/opt/silicium}/Network:/opt/silicium/Network
     networks:
     - backend
   frontend:
