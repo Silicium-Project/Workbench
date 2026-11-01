@@ -32,3 +32,6 @@ def test_compose_reads_only_its_channel_config_and_data():
     assert dev['SILICIUM_CONFIG_DIR']=='/etc/silicium-dev' and dev['SILICIUM_DATA_ROOT']=='/var/lib/silicium-dev'
     prod=delivery.compose_env(Path('/etc/silicium'),Path('/var/lib/silicium'))
     assert prod['SILICIUM_CONFIG_DIR']=='/etc/silicium' and prod['SILICIUM_DATA_ROOT']=='/var/lib/silicium'
+
+def test_rollback_refuses_without_the_transition_flag():
+    with pytest.raises(RuntimeError):delivery.rollback('dev',False)
