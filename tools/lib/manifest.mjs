@@ -31,6 +31,11 @@ export function validateManifest(m) {
   if (!['included', 'not_included'].includes(packagesMode)) errors.push('invalid packages mode');
   if (packagesMode === 'not_included' && m.channel !== 'dev')
     errors.push('packages may be excluded only from the dev channel');
+  // Contract v1b: the network service may stay on its running image, only in dev.
+  const networkMode = m.network ?? 'included';
+  if (!['included', 'unchanged'].includes(networkMode)) errors.push('invalid network mode');
+  if (networkMode === 'unchanged' && m.channel !== 'dev')
+    errors.push('network may stay unchanged only in the dev channel');
   if (m.release_id !== `${m.channel}-${version}-${sourceSha.slice(0, 12)}`)
     errors.push('candidate identity mismatch');
   const qualification = isRecord(m.qualification) ? m.qualification : null;
@@ -64,10 +69,16 @@ export function validateManifest(m) {
     errors.push('private Integration qualification missing or stale');
   if (!isRecord(m.components)) errors.push('components must be a JSON object');
   else {
-    const requiredComponents =
-      packagesMode === 'included' ? ['api', 'web', 'network', 'node'] : ['api', 'web', 'network'];
+    const requiredComponents = [
+      'api',
+      'web',
+      ...(networkMode === 'included' ? ['network'] : []),
+      ...(packagesMode === 'included' ? ['node'] : []),
+    ];
     for (const component of requiredComponents)
       if (!m.components[component]) errors.push(`missing component ${component}`);
+    if (networkMode === 'unchanged' && m.components.network)
+      errors.push('network component present but network is unchanged');
     for (const [name, c] of Object.entries(m.components)) {
       if (!['web', 'api', 'network', 'node', 'solana', 'sdk'].includes(name))
         errors.push('unknown component');

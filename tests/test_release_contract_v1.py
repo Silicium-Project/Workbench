@@ -17,3 +17,12 @@ def test_prod_cannot_exclude_client_packages():
 
 def test_unknown_packages_mode_is_refused():
     with pytest.raises(ValueError):delivery.required_assets({'channel':'dev','packages':'maybe'})
+
+def test_dev_may_keep_network_unchanged():
+    assert delivery.required_components({'channel':'dev','network':'unchanged'})=={'api','web'}
+
+def test_default_requires_network_component():
+    assert delivery.required_components({'channel':'prod'})=={'api','web','network'}
+
+def test_prod_cannot_keep_network_unchanged():
+    with pytest.raises(ValueError):delivery.required_components({'channel':'prod','network':'unchanged'})
