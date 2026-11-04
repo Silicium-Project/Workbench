@@ -699,7 +699,8 @@
             "tests/test_vpn_deployment.py",
             "tests/test_delivery.py",
             "tests/test_update_manifest.py",
-            "tests/test_diagnostics.py"
+            "tests/test_diagnostics.py",
+            "tests/test_devnet_rpc_relay.py"
           ],
           "cwd": ".",
           "kind": "test",
