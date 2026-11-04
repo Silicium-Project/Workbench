@@ -78,6 +78,111 @@ def back_off_upstream(delay: float) -> None:
         UPSTREAM_BACKOFF_UNTIL = max(UPSTREAM_BACKOFF_UNTIL, time.monotonic() + delay)
 
 
+def fetch_upstream(payload: bytes) -> tuple[int, bytes, str]:
+    """Sends one request to Devnet, paced and retried; returns status, body, content type."""
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    request = Request(UPSTREAM, data=payload, headers=headers, method="POST")
+    for attempt in range(4):
+        status = 502
+        response_headers = None
+        try:
+            with UPSTREAM_SLOTS:
+                pace_upstream_request()
+                with urlopen(request, timeout=25) as response:
+                    status = response.status
+                    response_headers = response.headers
+                    body = response.read(MAX_RESPONSE_BYTES + 1)
+        except HTTPError as error:
+            status = error.code
+            response_headers = error.headers
+            body = error.read(MAX_RESPONSE_BYTES + 1)
+        except (TimeoutError, URLError, OSError):
+            body = b'{"error":{"code":-32000,"message":"Devnet RPC upstream unavailable"}}'
+        if len(body) > MAX_RESPONSE_BYTES:
+            return 502, b'{"error":"upstream response too large"}', "application/json"
+        should_retry = status in RETRYABLE_STATUS or (status == 200 and is_json_rpc_rate_limit(body))
+        if should_retry:
+            # Even the last failed attempt slows every worker down.
+            back_off_upstream(retry_delay(response_headers, attempt))
+        if not should_retry or attempt == 3:
+            content_type = "application/json"
+            if response_headers:
+                content_type = response_headers.get("Content-Type", content_type)
+            return status, body, content_type
+    raise AssertionError("unreachable")
+
+
+# Read-only methods whose identical, simultaneous requests share one Devnet
+# call. Twenty workers checking the same escrow ask for the same accounts at
+# nearly the same time, and each upstream call costs a paced slot. Nothing is
+# kept after the answer: a request that arrives later asks Devnet again, so a
+# worker never reads state older than a request already waiting in the queue.
+COALESCED_METHODS = frozenset(
+    {"getAccountInfo", "getMultipleAccounts", "getBalance", "getLatestBlockhash", "getHealth"}
+)
+FLIGHT_WAIT_SECONDS = 150.0
+
+
+class Flight:
+    """One upstream request in progress, and the answer its followers wait for."""
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+        self.result: tuple[int, bytes, str] | None = None
+
+
+FLIGHTS: dict[str, Flight] = {}
+FLIGHTS_LOCK = threading.Lock()
+
+
+def coalescing_key(request_json) -> str | None:
+    """Key shared by identical read requests, or None when the request must go alone."""
+    if not isinstance(request_json, dict) or request_json.get("method") not in COALESCED_METHODS:
+        return None
+    params = request_json.get("params", [])
+    if not isinstance(params, list):
+        return None
+    # The id is the caller's own: it is not part of what is asked.
+    return json.dumps([request_json["method"], params], sort_keys=True, separators=(",", ":"))
+
+
+def with_request_id(result: tuple[int, bytes, str], request_json) -> tuple[int, bytes, str]:
+    """Gives a shared answer the id of the request it now answers."""
+    status, body, content_type = result
+    try:
+        answer = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return result
+    if not isinstance(answer, dict) or "id" not in answer:
+        return result
+    answer["id"] = request_json.get("id")
+    return status, json.dumps(answer, separators=(",", ":")).encode(), content_type
+
+
+def coalesced_fetch(request_json, payload: bytes) -> tuple[int, bytes, str]:
+    key = coalescing_key(request_json)
+    if key is None:
+        return fetch_upstream(payload)
+    with FLIGHTS_LOCK:
+        flight = FLIGHTS.get(key)
+        leader = flight is None
+        if leader:
+            flight = FLIGHTS[key] = Flight()
+    if leader:
+        try:
+            flight.result = fetch_upstream(payload)
+        finally:
+            with FLIGHTS_LOCK:
+                FLIGHTS.pop(key, None)
+            flight.done.set()
+        return flight.result
+    flight.done.wait(FLIGHT_WAIT_SECONDS)
+    if flight.result is None:
+        # The leader failed or took too long: ask on our own.
+        return fetch_upstream(payload)
+    return with_request_id(flight.result, request_json)
+
+
 class RelayHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
     server_version = "SiliciumDevnetRelay/1"
@@ -136,42 +241,8 @@ class RelayHandler(BaseHTTPRequestHandler):
             self._respond(400, b'{"error":"invalid JSON-RPC request"}')
             return
 
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
-        request = Request(UPSTREAM, data=payload, headers=headers, method="POST")
-        for attempt in range(4):
-            status = 502
-            response_headers = None
-            try:
-                with UPSTREAM_SLOTS:
-                    pace_upstream_request()
-                    with urlopen(request, timeout=25) as response:
-                        status = response.status
-                        response_headers = response.headers
-                        body = response.read(MAX_RESPONSE_BYTES + 1)
-            except HTTPError as error:
-                status = error.code
-                response_headers = error.headers
-                body = error.read(MAX_RESPONSE_BYTES + 1)
-            except (TimeoutError, URLError, OSError):
-                body = b'{"error":{"code":-32000,"message":"Devnet RPC upstream unavailable"}}'
-            if len(body) > MAX_RESPONSE_BYTES:
-                self._respond(502, b'{"error":"upstream response too large"}')
-                return
-            should_retry = status in RETRYABLE_STATUS or (status == 200 and is_json_rpc_rate_limit(body))
-            if not should_retry:
-                content_type = "application/json"
-                if response_headers:
-                    content_type = response_headers.get("Content-Type", content_type)
-                self._respond(status, body, content_type)
-                return
-            delay = retry_delay(response_headers, attempt)
-            back_off_upstream(delay)
-            if attempt == 3:
-                content_type = "application/json"
-                if response_headers:
-                    content_type = response_headers.get("Content-Type", content_type)
-                self._respond(status, body, content_type)
-                return
+        status, body, content_type = coalesced_fetch(request_json, payload)
+        self._respond(status, body, content_type)
 
     def log_message(self, _format: str, *_args) -> None:
         return
@@ -182,5 +253,6 @@ class RelayServer(ThreadingHTTPServer):
     request_queue_size = 64
 
 
-server = RelayServer((LISTEN_HOST, LISTEN_PORT), RelayHandler)
-server.serve_forever(poll_interval=0.5)
+if __name__ == "__main__":
+    server = RelayServer((LISTEN_HOST, LISTEN_PORT), RelayHandler)
+    server.serve_forever(poll_interval=0.5)
